@@ -306,6 +306,113 @@ for (let i = 0; i < navigationLinks.length; i++) {
   });
 }
 
+/* ============================================
+   PREMIUM ABOUT SECTION — VANILLA INTERACTIONS
+   Scroll reveals + animated counters + subtle polish
+============================================ */
+
+function initPremiumAbout() {
+  const aboutSection = document.querySelector('article[data-page="about"]');
+  if (!aboutSection) return;
+
+  // Scroll reveal using IntersectionObserver
+  const revealElements = aboutSection.querySelectorAll(
+    '.about-hero, .skill-capsules, .what-i-bring, .impact, .bring-card, .metric, .experience-item'
+  );
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, index) => {
+      if (entry.isIntersecting) {
+        // Staggered reveal
+        setTimeout(() => {
+          entry.target.classList.add('revealed');
+        }, index * 60);
+
+        // Trigger count animation for metrics
+        if (entry.target.classList.contains('metric')) {
+          const countEl = entry.target.querySelector('.count');
+          if (countEl && !countEl.classList.contains('counted')) {
+            animateCount(countEl);
+            countEl.classList.add('counted');
+          }
+        }
+
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {
+    threshold: 0.2,
+    rootMargin: '0px 0px -40px 0px'
+  });
+
+  revealElements.forEach(el => {
+    el.classList.add('scroll-reveal');
+    observer.observe(el);
+  });
+
+  // Count-up animation
+  function animateCount(element) {
+    const target = parseInt(element.dataset.target, 10);
+    const duration = 1600;
+    const startTime = performance.now();
+
+    function update(currentTime) {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.floor(target * eased);
+
+      element.textContent = current;
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      } else {
+        element.textContent = target;
+      }
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  // Optional: gentle capsule interaction on hover (extra depth)
+  const capsules = aboutSection.querySelectorAll('.skill-capsule');
+  capsules.forEach(capsule => {
+    capsule.addEventListener('mouseenter', () => {
+      capsule.style.transitionDuration = '180ms';
+    });
+  });
+}
+
+// Initialize when DOM is ready and also when About tab is activated
+function initAboutInteractions() {
+  // Run immediately if About is already active
+  const about = document.querySelector('article[data-page="about"]');
+  if (about && about.classList.contains('active')) {
+    initPremiumAbout();
+  }
+
+  // Listen for tab switches (existing nav system)
+  document.querySelectorAll('[data-nav-link]').forEach(link => {
+    link.addEventListener('click', () => {
+      if (link.textContent.toLowerCase() === 'about') {
+        // Small delay to allow the panel to become visible
+        setTimeout(() => {
+          initPremiumAbout();
+        }, 80);
+      }
+    });
+  });
+}
+
+// Boot
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAboutInteractions);
+} else {
+  initAboutInteractions();
+}
+
 // ============================================
 // Resume PDF Preview using PDF.js
 // - Fits width of content area
