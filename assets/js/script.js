@@ -294,5 +294,131 @@ for (let i = 0; i < navigationLinks.length; i++) {
       }
     }
 
+    // Render the PDF.js resume preview when the Resume tab is activated
+    if (this.innerHTML.toLowerCase() === 'resume') {
+      setTimeout(() => {
+        if (typeof renderResumePreview === 'function') {
+          renderResumePreview();
+        }
+      }, 60);
+    }
+
   });
 }
+
+// ============================================
+// Resume PDF Preview using PDF.js
+// - Fits width of content area
+// - Stacked canvases = flows with main page scroll (no internal scroll)
+// - High-DPI sharp rendering
+// ============================================
+
+// Set PDF.js worker (must match the version loaded in index.html)
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+let resumePdfDoc = null;
+
+async function renderResumePreview(force = false) {
+  const viewerEl = document.querySelector('.pdf-viewer');
+  if (!viewerEl) return;
+
+  const frame = viewerEl.closest('.resume-frame') || viewerEl;
+
+  // Loading indicator only on first render
+  if (viewerEl.children.length === 0) {
+    viewerEl.innerHTML = '<div style="padding:18px 12px;color:var(--light-gray);font-size:14px;text-align:center;">Loading resume preview…</div>';
+  }
+
+  try {
+    if (!resumePdfDoc) {
+      const loadingTask = pdfjsLib.getDocument('./assets/files/Aditya_Deore_Resume.pdf');
+      resumePdfDoc = await loadingTask.promise;
+    }
+
+    viewerEl.innerHTML = '';
+
+    const numPages = resumePdfDoc.numPages;
+
+    // Target width: fit the frame/content column nicely (capped for readability)
+    const desiredCssWidth = Math.max(320, Math.min(
+      frame.clientWidth || viewerEl.clientWidth || 780,
+      1100
+    ));
+
+    const outputScale = window.devicePixelRatio || 1;
+
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await resumePdfDoc.getPage(pageNum);
+      const unscaledViewport = page.getViewport({ scale: 1 });
+
+      // Fit to desired width + slight zoom for readability (was previously too small)
+      let baseScale = desiredCssWidth / unscaledViewport.width;
+      baseScale = baseScale * 1.03;
+
+      // Reasonable cap on ultra-wide
+      if (baseScale > 2.6) baseScale = 2.6;
+
+      const viewport = page.getViewport({ scale: baseScale });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      // Backing store at device resolution for crisp text
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+
+      // CSS display size (what user sees)
+      const displayWidth = Math.floor(viewport.width);
+      canvas.style.width = displayWidth + 'px';
+      canvas.style.height = 'auto';
+      canvas.style.display = 'block';
+      canvas.style.margin = '0 auto 10px';
+      canvas.style.backgroundColor = '#ffffff';
+      canvas.style.boxShadow = '0 4px 18px rgba(0,0,0,0.22)';
+      canvas.style.borderRadius = '4px';
+
+      // DPI transform
+      const transform = outputScale !== 1
+        ? [outputScale, 0, 0, outputScale, 0, 0]
+        : null;
+
+      await page.render({
+        canvasContext: ctx,
+        viewport,
+        transform
+      }).promise;
+
+      viewerEl.appendChild(canvas);
+    }
+  } catch (err) {
+    console.error('Resume PDF.js render error:', err);
+    viewerEl.innerHTML = '<div style="padding:18px 12px;color:var(--light-gray);font-size:14px;text-align:center;">Could not load preview.<br><a href="./assets/files/Aditya_Deore_Resume.pdf" download style="color:var(--orange-yellow-crayola);">Download PDF</a></div>';
+  }
+}
+
+// Optional: re-render on significant resize while resume tab is open (debounced)
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const resumePage = document.querySelector('article[data-page="resume"]');
+    const viewer = document.querySelector('.pdf-viewer');
+    if (resumePage && resumePage.classList.contains('active') && viewer) {
+      // Only re-render if already rendered once
+      if (viewer.children.length > 0) {
+        renderResumePreview(true);
+      }
+    }
+  }, 350);
+});
+
+// Initial attempt in case Resume is the starting page (rare)
+document.addEventListener('DOMContentLoaded', () => {
+  const resumePage = document.querySelector('article[data-page="resume"]');
+  if (resumePage && resumePage.classList.contains('active')) {
+    setTimeout(() => renderResumePreview(), 120);
+  }
+});
